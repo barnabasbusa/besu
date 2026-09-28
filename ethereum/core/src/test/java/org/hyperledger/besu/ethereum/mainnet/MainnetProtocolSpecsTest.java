@@ -15,6 +15,7 @@
 package org.hyperledger.besu.ethereum.mainnet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.when;
 
@@ -100,11 +101,11 @@ public class MainnetProtocolSpecsTest {
                     isParallelTxProcessingEnabled,
                     balConfiguration,
                     metricsSystem))
-        .withMessageContaining("Withdrawal Request Contract Address not found");
+        .withMessageContaining("Deposit Contract Address not found");
   }
 
   @Test
-  public void pragueDefinitionShouldThrowExceptionWhenWithdrawalRequestContractAddressIsMissing() {
+  public void pragueDefinitionShouldDefaultWithdrawalRequestContractAddressWhenMissing() {
     // Given
     when(genesisConfigOptions.getDepositContractAddress()).thenReturn(Optional.of(Address.ZERO));
     when(genesisConfigOptions.getConsolidationRequestContractAddress())
@@ -112,8 +113,7 @@ public class MainnetProtocolSpecsTest {
     when(genesisConfigOptions.getWithdrawalRequestContractAddress()).thenReturn(Optional.empty());
 
     // When/Then
-    assertThatExceptionOfType(NoSuchElementException.class)
-        .isThrownBy(
+    assertThatCode(
             () ->
                 MainnetProtocolSpecs.pragueDefinition(
                     chainId,
@@ -124,7 +124,7 @@ public class MainnetProtocolSpecsTest {
                     isParallelTxProcessingEnabled,
                     balConfiguration,
                     metricsSystem))
-        .withMessageContaining("Withdrawal Request Contract Address not found");
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -153,8 +153,7 @@ public class MainnetProtocolSpecsTest {
   }
 
   @Test
-  public void
-      pragueDefinitionShouldThrowExceptionWhenConsolidationRequestContractAddressIsMissing() {
+  public void pragueDefinitionShouldDefaultConsolidationRequestContractAddressWhenMissing() {
     // Given
     when(genesisConfigOptions.getDepositContractAddress()).thenReturn(Optional.of(Address.ZERO));
     when(genesisConfigOptions.getConsolidationRequestContractAddress())
@@ -163,8 +162,7 @@ public class MainnetProtocolSpecsTest {
         .thenReturn(Optional.of(Address.ZERO));
 
     // When/Then
-    assertThatExceptionOfType(NoSuchElementException.class)
-        .isThrownBy(
+    assertThatCode(
             () ->
                 MainnetProtocolSpecs.pragueDefinition(
                     chainId,
@@ -175,7 +173,7 @@ public class MainnetProtocolSpecsTest {
                     isParallelTxProcessingEnabled,
                     balConfiguration,
                     metricsSystem))
-        .withMessageContaining("Consolidation Request Contract Address not found");
+        .doesNotThrowAnyException();
   }
 
   @Test
