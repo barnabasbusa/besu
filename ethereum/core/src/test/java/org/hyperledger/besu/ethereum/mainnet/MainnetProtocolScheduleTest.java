@@ -27,6 +27,7 @@ import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.ISTANB
 import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.LONDON;
 import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.MUIR_GLACIER;
 import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.PETERSBURG;
+import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.PRAGUE;
 import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.SPURIOUS_DRAGON;
 import static org.hyperledger.besu.datatypes.HardforkId.MainnetHardforkId.TANGERINE_WHISTLE;
 
@@ -36,6 +37,7 @@ import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.MiningConfiguration;
 import org.hyperledger.besu.ethereum.core.ProtocolScheduleFixture;
+import org.hyperledger.besu.ethereum.mainnet.requests.RequestContractAddresses;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
@@ -153,6 +155,48 @@ public class MainnetProtocolScheduleTest {
                     false,
                     BalConfiguration.DEFAULT,
                     new NoOpMetricsSystem()));
+  }
+
+  @Test
+  public void shouldDefaultRequestContractAddressesForPragueGenesisWithoutThem() {
+    // Shape of the eth-clients mainnet genesis: Prague active, only the deposit contract
+    // configured.
+    final String json =
+        """
+        {"config": {
+          "chainId": 1,
+          "ethash": {},
+          "berlinBlock": 0,
+          "londonBlock": 0,
+          "terminalTotalDifficulty": 0,
+          "shanghaiTime": 0,
+          "cancunTime": 0,
+          "pragueTime": 0,
+          "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa"
+        }}
+        """;
+    final ProtocolSchedule sched =
+        MainnetProtocolSchedule.fromConfig(
+            GenesisConfig.fromConfig(json).getConfigOptions(),
+            EvmConfiguration.DEFAULT,
+            MiningConfiguration.MINING_DISABLED,
+            new BadBlockManager(),
+            false,
+            BalConfiguration.DEFAULT,
+            new NoOpMetricsSystem());
+
+    final ProtocolSpec prague =
+        sched.getByBlockHeader(new BlockHeaderTestFixture().number(1).timestamp(1).buildHeader());
+
+    Assertions.assertThat(prague.getHardforkId()).isEqualTo(PRAGUE);
+    Assertions.assertThat(
+            prague.getRequestProcessorCoordinator().orElseThrow().getContractConfigs())
+        .containsEntry(
+            "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS",
+            RequestContractAddresses.DEFAULT_WITHDRAWAL_REQUEST_CONTRACT_ADDRESS.toHexString())
+        .containsEntry(
+            "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS",
+            RequestContractAddresses.DEFAULT_CONSOLIDATION_REQUEST_CONTRACT_ADDRESS.toHexString());
   }
 
   private BlockHeader blockHeader(final long number) {

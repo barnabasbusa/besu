@@ -15,7 +15,6 @@
 package org.hyperledger.besu.ethereum.mainnet;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.when;
 
@@ -29,10 +28,12 @@ import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.ImmutableMiningConfiguration;
 import org.hyperledger.besu.ethereum.core.MiningConfiguration;
+import org.hyperledger.besu.ethereum.mainnet.requests.RequestContractAddresses;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 
 import java.math.BigInteger;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -81,30 +82,6 @@ public class MainnetProtocolSpecsTest {
   }
 
   @Test
-  public void pragueDefinitionShouldThrowExceptionWhenAllContractAddressesAreMissing() {
-    // Given
-    when(genesisConfigOptions.getDepositContractAddress()).thenReturn(Optional.empty());
-    when(genesisConfigOptions.getConsolidationRequestContractAddress())
-        .thenReturn(Optional.empty());
-    when(genesisConfigOptions.getWithdrawalRequestContractAddress()).thenReturn(Optional.empty());
-
-    // When/Then
-    assertThatExceptionOfType(NoSuchElementException.class)
-        .isThrownBy(
-            () ->
-                MainnetProtocolSpecs.pragueDefinition(
-                    chainId,
-                    enableRevertReason,
-                    genesisConfigOptions,
-                    evmConfiguration,
-                    MiningConfiguration.newDefault(),
-                    isParallelTxProcessingEnabled,
-                    balConfiguration,
-                    metricsSystem))
-        .withMessageContaining("Deposit Contract Address not found");
-  }
-
-  @Test
   public void pragueDefinitionShouldDefaultWithdrawalRequestContractAddressWhenMissing() {
     // Given
     when(genesisConfigOptions.getDepositContractAddress()).thenReturn(Optional.of(Address.ZERO));
@@ -113,18 +90,11 @@ public class MainnetProtocolSpecsTest {
     when(genesisConfigOptions.getWithdrawalRequestContractAddress()).thenReturn(Optional.empty());
 
     // When/Then
-    assertThatCode(
-            () ->
-                MainnetProtocolSpecs.pragueDefinition(
-                    chainId,
-                    enableRevertReason,
-                    genesisConfigOptions,
-                    evmConfiguration,
-                    MiningConfiguration.newDefault(),
-                    isParallelTxProcessingEnabled,
-                    balConfiguration,
-                    metricsSystem))
-        .doesNotThrowAnyException();
+    assertThat(pragueRequestContractConfigs())
+        .containsEntry(
+            "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS",
+            RequestContractAddresses.DEFAULT_WITHDRAWAL_REQUEST_CONTRACT_ADDRESS.toHexString())
+        .containsEntry("CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS", Address.ZERO.toHexString());
   }
 
   @Test
@@ -162,18 +132,43 @@ public class MainnetProtocolSpecsTest {
         .thenReturn(Optional.of(Address.ZERO));
 
     // When/Then
-    assertThatCode(
-            () ->
-                MainnetProtocolSpecs.pragueDefinition(
-                    chainId,
-                    enableRevertReason,
-                    genesisConfigOptions,
-                    evmConfiguration,
-                    MiningConfiguration.newDefault(),
-                    isParallelTxProcessingEnabled,
-                    balConfiguration,
-                    metricsSystem))
-        .doesNotThrowAnyException();
+    assertThat(pragueRequestContractConfigs())
+        .containsEntry("WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS", Address.ZERO.toHexString())
+        .containsEntry(
+            "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS",
+            RequestContractAddresses.DEFAULT_CONSOLIDATION_REQUEST_CONTRACT_ADDRESS.toHexString());
+  }
+
+  @Test
+  public void pragueDefinitionShouldSkipRequestProcessorsForPoAWithOnlyDepositContractAddress() {
+    // Given
+    when(genesisConfigOptions.isQbft()).thenReturn(true);
+    when(genesisConfigOptions.getQbftConfigOptions())
+        .thenReturn(new JsonQbftConfigOptions(JsonNodeFactory.instance.objectNode()));
+    when(genesisConfigOptions.getDepositContractAddress()).thenReturn(Optional.of(Address.ZERO));
+    when(genesisConfigOptions.getConsolidationRequestContractAddress())
+        .thenReturn(Optional.empty());
+    when(genesisConfigOptions.getWithdrawalRequestContractAddress()).thenReturn(Optional.empty());
+
+    // When/Then
+    assertThat(pragueRequestContractConfigs()).isEmpty();
+  }
+
+  private Map<String, String> pragueRequestContractConfigs() {
+    return MainnetProtocolSpecs.pragueDefinition(
+            chainId,
+            enableRevertReason,
+            genesisConfigOptions,
+            evmConfiguration,
+            MiningConfiguration.newDefault(),
+            isParallelTxProcessingEnabled,
+            balConfiguration,
+            metricsSystem)
+        .badBlocksManager(badBlockManager)
+        .build(protocolSchedule)
+        .getRequestProcessorCoordinator()
+        .orElseThrow()
+        .getContractConfigs();
   }
 
   @Test

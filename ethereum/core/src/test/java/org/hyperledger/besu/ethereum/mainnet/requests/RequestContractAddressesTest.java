@@ -27,18 +27,10 @@ import org.junit.jupiter.api.Test;
 public class RequestContractAddressesTest {
 
   @Test
-  public void defaultsRequestAddressesForMainnetStyleGenesis() {
-    // Mirrors eth-clients/mainnet genesis.json: ethash present, no mergeNetsplitBlock, Prague
-    // active and no request contract addresses, so it is not treated as a Geth-format genesis.
+  public void defaultsWithdrawalAndConsolidationAddressesWhenAbsent() {
     final String json =
         """
         {"config": {
-          "chainId": 1,
-          "ethash": {},
-          "terminalTotalDifficulty": 58750000000000000000000,
-          "shanghaiTime": 1681338455,
-          "cancunTime": 1710338135,
-          "pragueTime": 1746612311,
           "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa"
         }}
         """;

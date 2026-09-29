@@ -57,20 +57,17 @@ public class RequestContractAddresses {
 
   public static RequestContractAddresses fromGenesis(
       final GenesisConfigOptions genesisConfigOptions) {
-    // EIP-7002/EIP-7251: withdrawal and consolidation request addresses are spec-fixed; the
-    // genesis config may override them. The deposit contract address differs per network, so it
-    // must be configured.
     return new RequestContractAddresses(
         genesisConfigOptions
             .getWithdrawalRequestContractAddress()
             .orElse(DEFAULT_WITHDRAWAL_REQUEST_CONTRACT_ADDRESS),
+        // The deposit contract address differs per network, so it has no default.
         genesisConfigOptions
             .getDepositContractAddress()
             .orElseThrow(() -> new NoSuchElementException("Deposit Contract Address not found")),
         genesisConfigOptions
             .getConsolidationRequestContractAddress()
             .orElse(DEFAULT_CONSOLIDATION_REQUEST_CONTRACT_ADDRESS),
-        // EIP-8282: builder request addresses are spec-fixed; the genesis config may override them.
         genesisConfigOptions
             .getBuilderDepositRequestContractAddress()
             .orElse(DEFAULT_BUILDER_DEPOSIT_REQUEST_CONTRACT_ADDRESS),
