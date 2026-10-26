@@ -24,7 +24,6 @@ import org.hyperledger.besu.ethereum.BlockProcessingResult;
 import org.hyperledger.besu.ethereum.api.jsonrpc.RpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.ExecutionPayloadV4;
-import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.InclusionListTransactions;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonRpcParameter.Configuration;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.JsonRpcParameter.JsonRpcParameterException;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.NewPayloadRequestParametersV3;
@@ -35,11 +34,10 @@ import org.hyperledger.besu.ethereum.chain.InclusionListStatus;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.Transaction;
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
 import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListValidationResult;
 
 import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
 
 import org.apache.tuweni.bytes.Bytes32;
 import org.slf4j.Logger;
@@ -90,16 +88,17 @@ public final class EngineNewPayloadV6<
     final NewPayloadRequestParametersV3<? extends EP> requestParameters =
         super.readRequestParameters(requestContext);
 
-    final Set<Transaction> inclusionListTransactions;
+    final InclusionListTransactions inclusionListTransactions;
     try {
+      // deduplicated and sorted by hash by InclusionListTransactions
       inclusionListTransactions =
-          requestContext.getRequiredLenientSet(
-              4,
-              Transaction.class,
-              _ -> new TreeSet<>(InclusionListTransactions.HASH_ORDER),
-              Configuration.FAIL_ON_UNKNOWN_BUT_NULL);
+          new InclusionListTransactions(
+              requestContext.getRequiredLenientList(
+                  4, Transaction.class, Configuration.FAIL_ON_UNKNOWN_BUT_NULL));
       logger()
-          .info("Received {} unique inclusion list transactions", inclusionListTransactions.size());
+          .info(
+              "Received {} unique inclusion list transactions",
+              inclusionListTransactions.getTransactions().size());
     } catch (JsonRpcParameterException e) {
       throw new InvalidRequestParametersException(
           requestParameters.payloadParameter(),
@@ -108,9 +107,7 @@ public final class EngineNewPayloadV6<
           e);
     }
 
-    return (NPRP)
-        new NewPayloadRequestParametersV4<>(
-            requestParameters, new InclusionListTransactions(inclusionListTransactions));
+    return (NPRP) new NewPayloadRequestParametersV4<>(requestParameters, inclusionListTransactions);
   }
 
   /**

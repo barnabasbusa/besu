@@ -439,7 +439,8 @@ public abstract class AbstractBlockCreator implements AsyncBlockCreator {
       final SelectorsStateManager selectorsStateManager,
       final BlockHeader parentHeader,
       final Optional<BlockAccessListBuilder> blockAccessListBuilder,
-      final Set<Transaction> inclusionListTransactions) {
+      final Set<Transaction> inclusionListTransactions)
+      throws RuntimeException {
     final MainnetTransactionProcessor transactionProcessor = protocolSpec.getTransactionProcessor();
 
     final AbstractBlockProcessor.TransactionReceiptFactory transactionReceiptFactory =

@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 import org.hyperledger.besu.config.GenesisConfig;
 import org.hyperledger.besu.crypto.KeyPair;
 import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
+import org.hyperledger.besu.datatypes.AccessListEntry;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.PendingTransaction;
@@ -1121,6 +1122,164 @@ public abstract class AbstractBlockTransactionSelectorTest {
     selectionResults.set(results);
     assertThat(results.getSelectedTransactions()).isEmpty();
     assertThat(results.getSelectedTxsEvaluationTimeNanos()).isZero();
+  }
+
+  @Test
+  public void inclusionListTransactionsAreSelectedAfterPoolSelectionTimeout() {
+    final int txsSelectionMaxTime = 200;
+
+    final Transaction slowPoolTx = createTransaction(0, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(slowPoolTx, 0, 0, txsSelectionMaxTime * 3);
+
+    final Transaction ilTx = createTransaction(0, Wei.of(7), 100_000, SENDER2);
+    ensureTransactionIsValid(ilTx);
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            createMiningParameters(
+                transactionSelectionService, Wei.ZERO, PositiveNumber.fromInt(txsSelectionMaxTime)),
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(ilTx));
+
+    transactionPool.addRemoteTransactions(List.of(slowPoolTx));
+
+    final TransactionSelectionResults results = selector.buildTransactionListForBlock();
+
+    assertThat(results.getSelectedTransactions()).containsExactly(ilTx);
+    assertThat(results.getNotSelectedTransactions()).containsKey(slowPoolTx);
+  }
+
+  @Test
+  public void inclusionListTransactionAlreadySelectedFromThePoolIsNotEvaluatedAgain() {
+    final Transaction tx = createTransaction(0, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(tx);
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            defaultTestMiningConfiguration,
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(tx));
+
+    transactionPool.addRemoteTransactions(List.of(tx));
+
+    final TransactionSelectionResults results = selector.buildTransactionListForBlock();
+
+    assertThat(results.getSelectedTransactions()).containsExactly(tx);
+    assertThat(results.getNotSelectedTransactions()).isEmpty();
+  }
+
+  @Test
+  public void inclusionListTransactionsAreSelectedWhenEvaluatingGivenTransactions() {
+    final Transaction givenTx = createTransaction(0, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(givenTx);
+    final Transaction ilTx = createTransaction(0, Wei.of(7), 100_000, SENDER2);
+    ensureTransactionIsValid(ilTx);
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            defaultTestMiningConfiguration,
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(ilTx));
+
+    final TransactionSelectionResults results = selector.evaluateTransactions(List.of(givenTx));
+
+    assertThat(results.getSelectedTransactions()).containsExactly(givenTx, ilTx);
+  }
+
+  @Test
+  public void inclusionListTransactionWithUnrecoverableSenderIsSkipped() {
+    final Transaction ilTx = createTransaction(0, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(ilTx);
+    // r = 5 is a valid scalar but not the x-coordinate of any curve point
+    final Transaction unrecoverableSenderIlTx =
+        Transaction.builder()
+            .copiedFrom(createTransaction(0, Wei.of(7), 100_000, SENDER2))
+            .sender(null)
+            .signature(
+                SignatureAlgorithmFactory.getInstance()
+                    .createSignature(BigInteger.valueOf(5), BigInteger.ONE, (byte) 0))
+            .build();
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            defaultTestMiningConfiguration,
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(unrecoverableSenderIlTx, ilTx));
+
+    final TransactionSelectionResults results = selector.evaluateTransactions(List.of());
+
+    assertThat(results.getSelectedTransactions()).containsExactly(ilTx);
+  }
+
+  @Test
+  public void inclusionListTransactionDifferingFromAPoolTransactionOnlyInItsAccessListIsSelected() {
+    final Transaction poolTx = createEIP1559Transaction(0, Wei.of(7), Wei.ONE, 100_000, SENDER1);
+    ensureTransactionIsValid(poolTx);
+    // same signature, so it recovers a different sender, and Transaction.equals ignores the
+    // access list, but it is a different tx: it is included only by a tx with its exact bytes
+    final Transaction ilTx =
+        Transaction.builder()
+            .copiedFrom(poolTx)
+            .accessList(List.of(new AccessListEntry(Address.ZERO, List.of())))
+            .sender(null)
+            .build();
+    assertThat(ilTx).isEqualTo(poolTx);
+    ensureTransactionIsValid(ilTx);
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            defaultTestMiningConfiguration,
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(ilTx));
+    transactionPool.addRemoteTransactions(List.of(poolTx));
+
+    final TransactionSelectionResults results = selector.buildTransactionListForBlock();
+
+    assertThat(results.getSelectedTransactions())
+        .extracting(Transaction::getHash)
+        .containsExactly(poolTx.getHash(), ilTx.getHash());
+  }
+
+  @Test
+  public void inclusionListTransactionsOfTheSameSenderAreSelectedInNonceOrder() {
+    final Transaction ilTx0 = createTransaction(0, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(ilTx0);
+    final Transaction ilTx1 = createTransaction(1, Wei.of(7), 100_000, SENDER1);
+    ensureTransactionIsValid(ilTx1);
+
+    final BlockTransactionSelector selector =
+        createBlockSelectorAndSetupTxPool(
+            defaultTestMiningConfiguration,
+            transactionProcessor,
+            createBlock(301_000),
+            AddressHelpers.ofValue(1),
+            Wei.ZERO,
+            transactionSelectionService,
+            List.of(ilTx1, ilTx0));
+
+    final TransactionSelectionResults results = selector.evaluateTransactions(List.of());
+
+    assertThat(results.getSelectedTransactions()).containsExactly(ilTx0, ilTx1);
   }
 
   @Test

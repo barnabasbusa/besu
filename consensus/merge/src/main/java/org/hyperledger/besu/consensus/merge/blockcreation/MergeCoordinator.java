@@ -46,6 +46,7 @@ import org.hyperledger.besu.ethereum.mainnet.AbstractGasLimitSpecification;
 import org.hyperledger.besu.ethereum.mainnet.HeaderValidationMode;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.block.access.list.BlockAccessList;
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
 import org.hyperledger.besu.plugin.services.worldstate.MutableWorldState;
 
 import java.io.PrintWriter;
@@ -239,7 +240,7 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
   @Override
   public PayloadIdentifier preparePayload(final PreparePayloadArgs preparePayloadArgs) {
     // we assume that preparePayload is always called sequentially, since the RPC Engine calls
-    // are sequential, if this assumption changes, then more synchronization should be added to
+    // are sequential, if this assumption changes then more synchronization should be added to
     // shared data structures
 
     final PayloadIdentifier payloadIdentifier =
@@ -260,7 +261,10 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
             Optional.ofNullable(preparePayloadArgs.feeRecipient()));
 
     final Set<Transaction> inclusionListTransactions =
-        preparePayloadArgs.inclusionListTransactions().orElse(Set.of());
+        preparePayloadArgs
+            .inclusionListTransactions()
+            .map(InclusionListTransactions::getTransactions)
+            .orElse(Set.of());
 
     // put the empty block in first
     final BlockCreationResult minimalBlockResult =

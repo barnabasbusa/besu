@@ -26,6 +26,7 @@ import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.TransactionTestFixture;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
 
 import java.util.List;
 import java.util.Set;
@@ -328,7 +329,7 @@ public class PayloadIdentifierTest {
                 .timestamp(1337L)
                 .prevRandao(prevRandao)
                 .feeRecipient(Address.fromHexString("0x42"))
-                .inclusionListTransactions(Set.of(tx1))
+                .inclusionListTransactions(new InclusionListTransactions(Set.of(tx1)))
                 .build());
     var idForList2 =
         PayloadIdentifier.forPayloadParams(
@@ -337,7 +338,7 @@ public class PayloadIdentifierTest {
                 .timestamp(1337L)
                 .prevRandao(prevRandao)
                 .feeRecipient(Address.fromHexString("0x42"))
-                .inclusionListTransactions(Set.of(tx2))
+                .inclusionListTransactions(new InclusionListTransactions(Set.of(tx2)))
                 .build());
     assertThat(idForList1).isNotEqualTo(idForList2);
   }
@@ -354,7 +355,7 @@ public class PayloadIdentifierTest {
                 .timestamp(1337L)
                 .prevRandao(prevRandao)
                 .feeRecipient(Address.fromHexString("0x42"))
-                .inclusionListTransactions(Set.of(tx1, tx2))
+                .inclusionListTransactions(new InclusionListTransactions(List.of(tx1, tx2)))
                 .build());
     var idForList2 =
         PayloadIdentifier.forPayloadParams(
@@ -363,7 +364,7 @@ public class PayloadIdentifierTest {
                 .timestamp(1337L)
                 .prevRandao(prevRandao)
                 .feeRecipient(Address.fromHexString("0x42"))
-                .inclusionListTransactions(Set.of(tx2, tx1))
+                .inclusionListTransactions(new InclusionListTransactions(List.of(tx2, tx1)))
                 .build());
     assertThat(idForList1).isEqualTo(idForList2);
   }
@@ -386,8 +387,31 @@ public class PayloadIdentifierTest {
                 .timestamp(1337L)
                 .prevRandao(prevRandao)
                 .feeRecipient(Address.fromHexString("0x42"))
-                .inclusionListTransactions(Set.of(createTx(0)))
+                .inclusionListTransactions(new InclusionListTransactions(Set.of(createTx(0))))
                 .build());
     assertThat(idEmptyList).isNotEqualTo(idNonEmptyList);
+  }
+
+  @Test
+  public void absentAndEmptyInclusionListTransactionsYieldSameHash() {
+    final Bytes32 prevRandao = Bytes32.random();
+    var idAbsent =
+        PayloadIdentifier.forPayloadParams(
+            new PreparePayloadArgsBuilder()
+                .parentHeader(PARENT)
+                .timestamp(1337L)
+                .prevRandao(prevRandao)
+                .feeRecipient(Address.fromHexString("0x42"))
+                .build());
+    var idEmptyList =
+        PayloadIdentifier.forPayloadParams(
+            new PreparePayloadArgsBuilder()
+                .parentHeader(PARENT)
+                .timestamp(1337L)
+                .prevRandao(prevRandao)
+                .feeRecipient(Address.fromHexString("0x42"))
+                .inclusionListTransactions(InclusionListTransactions.EMPTY)
+                .build());
+    assertThat(idAbsent).isEqualTo(idEmptyList);
   }
 }

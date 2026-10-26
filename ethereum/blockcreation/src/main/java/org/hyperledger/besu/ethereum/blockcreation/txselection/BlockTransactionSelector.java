@@ -70,7 +70,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -88,6 +87,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import com.google.common.base.Stopwatch;
 import org.jspecify.annotations.Nullable;
@@ -147,10 +147,7 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
   private volatile @Nullable TransactionSelectionResult invalidTxSelectionTimeoutResult;
   private volatile @Nullable FutureTask<Void> currTxSelectionTask;
   private final List<CompletableFuture<Void>> scheduledSelectionTasks = new ArrayList<>(2);
-  // keyed by hash: an inclusion list tx is included only by a block tx with its exact bytes
-  // (EIP-7805),
-  // while Transaction.equals ignores some fields, like the access list
-  private final Map<Hash, Transaction> inclusionListTransactions;
+  private final List<Transaction> inclusionListTransactions;
 
   public BlockTransactionSelector(
       final MiningConfiguration miningConfiguration,
@@ -197,9 +194,7 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
     this.pluginTxsSelectionMaxTimeNanos =
         miningConfiguration.getPluginTxsSelectionMaxTime(blockTxsSelectionMaxTime).toNanos();
     this.maybeBlockAccessListBuilder = maybeBlockAccessListBuilder;
-    this.inclusionListTransactions =
-        LinkedHashMap.newLinkedHashMap(inclusionListTransactions.size());
-    inclusionListTransactions.forEach(tx -> this.inclusionListTransactions.put(tx.getHash(), tx));
+    this.inclusionListTransactions = List.copyOf(inclusionListTransactions);
   }
 
   private List<AbstractTransactionSelector> createTransactionSelectors(
@@ -230,21 +225,7 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
   public TransactionSelectionResults buildTransactionListForBlock() {
     blockSelectionContext.transactionPool().selectTransactions(this::timeLimitedSelection);
 
-    LOG.debug(
-        "Inclusion list transactions selection will evaluate {} transactions",
-        inclusionListTransactions.size());
-    // for any inclusion list txs not yet selected, evaluate and include it now
-    // this is not time-limited, since failing to include any of these txs will result
-    // in an invalid block
-    for (final Transaction ilTx : sortTransactionList(inclusionListTransactions.values())) {
-      final TransactionSelectionResult ilResult =
-          evaluateTransaction(new PendingTransaction.Local.Priority(ilTx));
-      LOG.atDebug()
-          .setMessage("Inclusion list tx {} selection result: {}")
-          .addArgument(ilTx::toTraceLog)
-          .addArgument(ilResult)
-          .log();
-    }
+    selectInclusionListTransactions();
 
     LOG.atTrace()
         .setMessage("Transaction selection result {}")
@@ -262,6 +243,77 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
    */
   public CompletableFuture<Void> selectionTasksDone() {
     return CompletableFuture.allOf(scheduledSelectionTasks.toArray(CompletableFuture[]::new));
+  }
+
+  /**
+   * Evaluates the inclusion list transactions (EIP-7805) that are not already part of the block,
+   * after the other transactions have been evaluated. This is not time-limited: a block that leaves
+   * out an inclusion list transaction that could have been included does not satisfy the inclusion
+   * list.
+   */
+  private void selectInclusionListTransactions() {
+    if (inclusionListTransactions.isEmpty() || isCancelled.get()) {
+      return;
+    }
+
+    if (isTimeout.get() && !resetTimeoutAfterSelectionTasksStopped()) {
+      LOG.warn(
+          "Skipping the selection of {} inclusion list transactions, since the timed out"
+              + " transaction selection is still running",
+          inclusionListTransactions.size());
+      return;
+    }
+
+    final Set<Hash> alreadySelected =
+        transactionSelectionResults.getSelectedTransactions().stream()
+            .map(Transaction::getHash)
+            .collect(Collectors.toSet());
+
+    final List<Transaction> candidates =
+        sortTransactionList(
+            inclusionListTransactions.stream()
+                .filter(tx -> !alreadySelected.contains(tx.getHash()))
+                .toList());
+
+    LOG.debug(
+        "Inclusion list transactions selection will evaluate {} of {} transactions",
+        candidates.size(),
+        inclusionListTransactions.size());
+
+    for (final Transaction ilTx : candidates) {
+      final TransactionSelectionResult ilResult =
+          evaluateTransaction(new PendingTransaction.Local.Priority(ilTx));
+      LOG.atDebug()
+          .setMessage("Inclusion list tx {} selection result: {}")
+          .addArgument(ilTx::toTraceLog)
+          .addArgument(ilResult)
+          .log();
+    }
+  }
+
+  /**
+   * When the time-limited selection timed out, its task could still be running, and while the
+   * timeout flag is set nothing more can be committed to the block. Wait for the selection tasks to
+   * stop, and only then reset the flag, so the inclusion list transactions can be committed without
+   * any concurrent access to the world state.
+   *
+   * @return true if the selection tasks stopped and the timeout flag was reset
+   */
+  private boolean resetTimeoutAfterSelectionTasksStopped() {
+    try {
+      selectionTasksDone().get(blockTxsSelectionMaxTimeNanos, TimeUnit.NANOSECONDS);
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    } catch (final ExecutionException | CancellationException e) {
+      // the task has stopped anyway
+    } catch (final TimeoutException e) {
+      return false;
+    }
+    synchronized (isTimeout) {
+      isTimeout.set(false);
+    }
+    return true;
   }
 
   private List<Transaction> sortTransactionList(
@@ -607,6 +659,8 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
 
     transactions.forEach(
         transaction -> evaluateTransaction(new PendingTransaction.Local.Priority(transaction)));
+
+    selectInclusionListTransactions();
 
     return transactionSelectionResults;
   }
@@ -1044,8 +1098,6 @@ public class BlockTransactionSelector implements BlockTransactionSelectionServic
           receiptGasUsed,
           processingResult.getStateGasUsed(),
           evaluationTimeNanos);
-
-      inclusionListTransactions.remove(transaction.getHash());
 
       notifySelected(evaluationContext, processingResult);
       LOG.atTrace()

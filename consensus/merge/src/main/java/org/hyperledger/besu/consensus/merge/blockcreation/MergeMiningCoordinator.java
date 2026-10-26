@@ -28,6 +28,7 @@ import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
 import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.mainnet.block.access.list.BlockAccessList;
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
 
 import java.util.List;
 import java.util.Optional;
@@ -54,7 +55,7 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
    * @param parentBeaconBlockRoot the parent beacon block root, if present
    * @param slotNumber the consensus-layer slot number, if present
    * @param targetGasLimit the CL-supplied target gas limit, if present
-   * @param inclusionListTransactions the inclusion list transactions, if present
+   * @param inclusionListTransactions the inclusion list transactions (EIP-7805), if present
    */
   @Value.Builder
   record PreparePayloadArgs(
@@ -66,7 +67,7 @@ public interface MergeMiningCoordinator extends MiningCoordinator {
       Optional<Bytes32> parentBeaconBlockRoot,
       Optional<Long> slotNumber,
       Optional<Long> targetGasLimit,
-      Optional<Set<Transaction>> inclusionListTransactions) {}
+      Optional<InclusionListTransactions> inclusionListTransactions) {}
 
   /**
    * Prepare payload identifier.

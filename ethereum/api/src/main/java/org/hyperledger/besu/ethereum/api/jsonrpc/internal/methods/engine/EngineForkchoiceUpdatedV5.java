@@ -36,6 +36,7 @@ import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ValidationResult;
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
 
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -113,7 +114,8 @@ public final class EngineForkchoiceUpdatedV5<
     final Set<Transaction> inclusionListTransactions = attrs.getInclusionListTransactions();
     logger()
         .info("Received {} unique inclusion list transactions", inclusionListTransactions.size());
-    preparePayloadArgsBuilder.inclusionListTransactions(inclusionListTransactions);
+    preparePayloadArgsBuilder.inclusionListTransactions(
+        new InclusionListTransactions(inclusionListTransactions));
     CompletableFuture.runAsync(
         () -> {
           final var ilTxsAddedResult =

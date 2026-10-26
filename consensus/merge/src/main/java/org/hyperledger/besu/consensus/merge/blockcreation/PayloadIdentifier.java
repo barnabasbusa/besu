@@ -15,7 +15,6 @@
 package org.hyperledger.besu.consensus.merge.blockcreation;
 
 import org.hyperledger.besu.datatypes.Quantity;
-import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
 
 import java.math.BigInteger;
@@ -79,11 +78,13 @@ public class PayloadIdentifier implements Quantity {
 
     final long targetGasLimitPart = preparePayloadArgs.targetGasLimit().orElse(-1L);
 
+    // absent or empty defaults to 0 so that payload ids for pre-FOCIL payloads are not affected
     final long inclusionListTxsPart =
         preparePayloadArgs
             .inclusionListTransactions()
-            .map(txs -> txs.stream().mapToLong(Transaction::hashCode).sum())
-            .orElse(-1L);
+            .filter(inclusionList -> !inclusionList.isEmpty())
+            .map(inclusionList -> inclusionList.getChecksum().getLong(0))
+            .orElse(0L);
 
     // we finally spread all the values over 64bit, rotating only values where the shift could lose
     // bits

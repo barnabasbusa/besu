@@ -14,6 +14,8 @@
  */
 package org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters;
 
+import org.hyperledger.besu.ethereum.mainnet.inclusionlist.InclusionListTransactions;
+
 public final class NewPayloadRequestParametersV4<EP extends ExecutionPayloadV3>
     extends NewPayloadRequestParametersV3<EP> {
   private final InclusionListTransactions inclusionListTransactions;

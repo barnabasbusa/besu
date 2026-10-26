@@ -66,7 +66,7 @@ class MergeBlockCreator extends AbstractBlockCreator {
   }
 
   /**
-   * Create block with inclusion list support (EIP-7805).
+   * Create block and return block creation result.
    *
    * @param maybeTransactions the maybe transactions
    * @param random the random
@@ -76,7 +76,7 @@ class MergeBlockCreator extends AbstractBlockCreator {
    * @param slotNumber optional slot number (EIP-7843)
    * @param targetGasLimit optional CL-supplied target gas limit for this payload
    * @param parentHeader the parent header
-   * @param inclusionListTransactions optional inclusion list transactions to prioritize
+   * @param inclusionListTransactions the inclusion list transactions (EIP-7805), empty if none
    * @return the block creation result
    */
   public BlockCreationResult createBlock(
