@@ -24,7 +24,6 @@ import static org.hyperledger.besu.ethereum.core.MiningConfiguration.MutableInit
 import static org.hyperledger.besu.ethereum.core.MiningConfiguration.MutableInitValues.DEFAULT_MIN_TRANSACTION_GAS_PRICE;
 import static org.hyperledger.besu.ethereum.core.MiningConfiguration.Unstable.DEFAULT_POS_BLOCK_CREATION_MAX_TIME;
 import static org.hyperledger.besu.ethereum.core.MiningConfiguration.Unstable.DEFAULT_POS_BLOCK_CREATION_REPETITION_MIN_DURATION;
-import static org.hyperledger.besu.ethereum.core.MiningConfiguration.Unstable.DEFAULT_POS_BLOCK_FINALIZATION_TIMEOUT_MS;
 import static org.hyperledger.besu.ethereum.core.MiningConfiguration.Unstable.DEFAULT_POS_SLOT_DURATION_SECS;
 
 import org.hyperledger.besu.cli.converter.PositiveNumberConverter;
@@ -148,12 +147,17 @@ public class MiningOptions implements CLIOptions<MiningConfiguration> {
     @Positive
     Integer posSlotDuration = DEFAULT_POS_SLOT_DURATION_SECS;
 
+    /**
+     * @deprecated No longer used. Accepted for backwards compatibility. The flag will be removed in
+     *     a future release.
+     */
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("unused")
     @CommandLine.Option(
         hidden = true,
         names = {"--Xpos-block-finalization-timeout-ms"},
-        description =
-            "Specifies the maximum time, in milliseconds, to wait for block building to complete when only an empty block is available (default: ${DEFAULT-VALUE} milliseconds)")
-    private Long posBlockFinalizationTimeoutMs = DEFAULT_POS_BLOCK_FINALIZATION_TIMEOUT_MS;
+        description = "Deprecated, no-op.")
+    private Long posBlockFinalizationTimeoutMs = null;
   }
 
   private TransactionSelectionService transactionSelectionService;
@@ -209,12 +213,6 @@ public class MiningOptions implements CLIOptions<MiningConfiguration> {
         || unstableOptions.posBlockCreationRepetitionMinDuration > 2000) {
       throw new ParameterException(
           commandLine, "--Xpos-block-creation-repetition-min-duration must be positive and ≤ 2000");
-    }
-
-    if (unstableOptions.posBlockFinalizationTimeoutMs <= 0
-        || unstableOptions.posBlockFinalizationTimeoutMs > 12000) {
-      throw new ParameterException(
-          commandLine, "--Xpos-block-finalization-timeout-ms must be positive and ≤ 12000");
     }
 
     CommandLineUtils.failIfOptionDoesntMeetRequirement(
@@ -287,8 +285,6 @@ public class MiningOptions implements CLIOptions<MiningConfiguration> {
         miningConfiguration.getUnstable().getPosBlockCreationRepetitionMinDuration();
     miningOptions.unstableOptions.posSlotDuration =
         miningConfiguration.getUnstable().getPosSlotDuration();
-    miningOptions.unstableOptions.posBlockFinalizationTimeoutMs =
-        miningConfiguration.getUnstable().getPosBlockFinalizationTimeoutMs();
 
     miningConfiguration.getTargetGasLimit().ifPresent(tgl -> miningOptions.targetGasLimit = tgl);
     return miningOptions;
@@ -328,7 +324,6 @@ public class MiningOptions implements CLIOptions<MiningConfiguration> {
                 .posBlockCreationRepetitionMinDuration(
                     unstableOptions.posBlockCreationRepetitionMinDuration)
                 .posSlotDuration(unstableOptions.posSlotDuration)
-                .posBlockFinalizationTimeoutMs(unstableOptions.posBlockFinalizationTimeoutMs)
                 .build())
         .build();
   }

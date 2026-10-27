@@ -229,9 +229,6 @@ public class EvmToolMergeCoordinator implements MergeMiningCoordinator {
   public void finalizeProposalById(final PayloadIdentifier payloadId) {}
 
   @Override
-  public void awaitCurrentBuildCompletion(final PayloadIdentifier payloadId) {}
-
-  @Override
   public EthScheduler getEthScheduler() {
     return ethScheduler;
   }

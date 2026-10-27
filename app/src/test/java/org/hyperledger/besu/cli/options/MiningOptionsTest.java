@@ -186,6 +186,14 @@ public class MiningOptionsTest extends AbstractCLIOptionsTest<MiningConfiguratio
   }
 
   @Test
+  public void deprecatedPosBlockFinalizationTimeoutOptionIsAccepted() {
+    internalTestSuccess(
+        miningParams -> assertThat(miningParams).isNotNull(),
+        "--Xpos-block-finalization-timeout-ms",
+        "20000");
+  }
+
+  @Test
   public void blockTxsSelectionMaxTimeDefaultValue() {
     internalTestSuccess(
         this::runtimeConfiguration,

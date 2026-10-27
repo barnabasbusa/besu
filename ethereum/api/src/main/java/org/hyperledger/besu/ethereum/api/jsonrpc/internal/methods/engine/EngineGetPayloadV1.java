@@ -79,19 +79,10 @@ public sealed class EngineGetPayloadV1 extends ExecutionEngineJsonRpcMethod
           "Invalid payload ID parameter (index 0)", RpcErrorType.INVALID_PAYLOAD_ID_PARAMS, e);
     }
 
-    Optional<PayloadWrapper> maybePayload = mergeContext.get().retrievePayloadById(payloadId);
+    final Optional<PayloadWrapper> maybePayload = mergeContext.get().retrievePayloadById(payloadId);
 
     // Client software MAY stop the corresponding build process after serving this call.
     mergeMiningCoordinator.finalizeProposalById(payloadId);
-
-    if (maybePayload.isPresent() && hasOnlyEmptyBlock(maybePayload.get())) {
-      logger()
-          .debug(
-              "Only empty block available for payload {}, waiting for block building to complete",
-              payloadId);
-      mergeMiningCoordinator.awaitCurrentBuildCompletion(payloadId);
-      maybePayload = mergeContext.get().retrievePayloadById(payloadId);
-    }
 
     if (maybePayload.isPresent()) {
       // Given the payloadId client software MUST return the most recent version of the payload that
@@ -113,10 +104,6 @@ public sealed class EngineGetPayloadV1 extends ExecutionEngineJsonRpcMethod
     // The call MUST return -38001: Unknown payload error if the build process identified by the
     // payloadId does not exist.
     return new JsonRpcErrorResponse(request.getRequest().getId(), RpcErrorType.UNKNOWN_PAYLOAD);
-  }
-
-  private boolean hasOnlyEmptyBlock(final PayloadWrapper payload) {
-    return payload.blockWithReceipts().getBlock().getBody().getTransactions().isEmpty();
   }
 
   private void logProducedBlock(

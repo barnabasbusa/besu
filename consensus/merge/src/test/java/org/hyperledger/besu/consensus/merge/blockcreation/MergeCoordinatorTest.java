@@ -102,7 +102,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -801,12 +800,8 @@ public class MergeCoordinatorTest implements MergeGenesisConfigHelper {
                 .build());
     firstBlockBuilt.await();
 
-    final long startedAt = System.nanoTime();
     slowRepetitionCoordinator.finalizeProposalById(payloadId);
-    slowRepetitionCoordinator.awaitCurrentBuildCompletion(payloadId);
-    final long waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
 
-    assertThat(waitedMs).isLessThan(400);
     assertThat(blockCreationTask).succeedsWithin(Duration.ofMillis(500));
   }
 

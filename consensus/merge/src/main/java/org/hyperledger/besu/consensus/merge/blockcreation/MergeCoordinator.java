@@ -79,6 +79,7 @@ import org.slf4j.LoggerFactory;
 /** The Merge coordinator. */
 public class MergeCoordinator implements MergeMiningCoordinator, BadChainListener {
   private static final Logger LOG = LoggerFactory.getLogger(MergeCoordinator.class);
+  private static final Duration BLOCK_CREATION_TASK_CLEANUP_DELAY = Duration.ofMillis(800);
 
   /** The Mining parameters. */
   protected final MiningConfiguration miningConfiguration;
@@ -398,55 +399,7 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
 
     // Schedule cleanup after a short delay to allow graceful completion
     ethScheduler.scheduleFutureTask(
-        () -> cleanupBlockCreationTask(payloadId),
-        Duration.ofMillis(miningConfiguration.getUnstable().getPosBlockFinalizationTimeoutMs()));
-  }
-
-  @Override
-  public void awaitCurrentBuildCompletion(final PayloadIdentifier payloadId) {
-    final BlockCreationTask task = blockCreationTasks.get(payloadId);
-    if (task == null) {
-      LOG.debug("No block creation task found for payload {}", payloadId);
-      return;
-    }
-
-    final CompletableFuture<Void> blockCreationFuture = task.getBlockCreationFuture();
-    if (blockCreationFuture == null) {
-      LOG.debug("No blockCreationFuture found for payload {}", payloadId);
-      return;
-    }
-
-    final long timeoutMs = getPosBlockFinalizationTimeoutMs();
-    final long startTime = System.currentTimeMillis();
-    try {
-      LOG.debug(
-          "Waiting up to {}ms for block building to complete for payload {}", timeoutMs, payloadId);
-      blockCreationFuture.get(timeoutMs, TimeUnit.MILLISECONDS);
-      final long elapsedTime = System.currentTimeMillis() - startTime;
-      LOG.debug("Block building completed for payload {} in {}ms", payloadId, elapsedTime);
-    } catch (java.util.concurrent.TimeoutException e) {
-      final long elapsedTime = System.currentTimeMillis() - startTime;
-      LOG.debug(
-          "Timeout waiting for block building for payload {} after {}ms", payloadId, elapsedTime);
-    } catch (java.util.concurrent.ExecutionException e) {
-      final long elapsedTime = System.currentTimeMillis() - startTime;
-      LOG.debug(
-          "Exception while waiting for block building for payload {} after {}ms: {}",
-          payloadId,
-          elapsedTime,
-          e.getMessage());
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      final long elapsedTime = System.currentTimeMillis() - startTime;
-      LOG.debug(
-          "Interrupted while waiting for block building for payload {} after {}ms",
-          payloadId,
-          elapsedTime);
-    }
-  }
-
-  private long getPosBlockFinalizationTimeoutMs() {
-    return miningConfiguration.getUnstable().getPosBlockFinalizationTimeoutMs();
+        () -> cleanupBlockCreationTask(payloadId), BLOCK_CREATION_TASK_CLEANUP_DELAY);
   }
 
   private void tryToBuildBetterBlock(
@@ -474,17 +427,12 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
         payloadIdentifier,
         miningConfiguration.getUnstable().getPosBlockCreationMaxTime());
 
-    // Create a future that we control
-    final CompletableFuture<Void> blockCreationFuture = new CompletableFuture<>();
-
     // Store the task BEFORE scheduling to avoid race condition where async work
     // starts before task is registered, causing isBlockCreationCancelled to incorrectly
     // return true during the race window
     blockCreationTasks.put(
-        payloadIdentifier,
-        new BlockCreationTask(mergeBlockCreator, preparePayloadArgs, blockCreationFuture));
+        payloadIdentifier, new BlockCreationTask(mergeBlockCreator, preparePayloadArgs));
 
-    // Schedule the async work and chain it to complete our controlled future
     ethScheduler
         .scheduleBlockCreationTask(
             parentHeader.getNumber() + 1,
@@ -495,7 +443,6 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
             miningConfiguration.getUnstable().getPosBlockCreationMaxTime(), TimeUnit.MILLISECONDS)
         .whenComplete(
             (unused, throwable) -> {
-              // Complete our controlled future to unblock any waiters
               if (throwable != null) {
                 if (throwable instanceof TimeoutException) {
                   LOG.atDebug()
@@ -509,9 +456,6 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
                       .addArgument(() -> logException(throwable))
                       .log();
                 }
-                blockCreationFuture.completeExceptionally(throwable);
-              } else {
-                blockCreationFuture.complete(null);
               }
               cleanupBlockCreationTask(payloadIdentifier);
             });
@@ -1175,34 +1119,18 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
     /** Released on cancellation. */
     final CountDownLatch cancellation;
 
-    /** The Future for the async block creation task. */
-    final CompletableFuture<Void> blockCreationFuture;
-
     /**
      * Instantiates a new Block creation task.
      *
      * @param blockCreator the block creator
      * @param preparePayloadArgs the arguments the block is built from
-     * @param blockCreationFuture the completable future for the async task
      */
     public BlockCreationTask(
-        final MergeBlockCreator blockCreator,
-        final PreparePayloadArgs preparePayloadArgs,
-        final CompletableFuture<Void> blockCreationFuture) {
+        final MergeBlockCreator blockCreator, final PreparePayloadArgs preparePayloadArgs) {
       this.blockCreator = blockCreator;
       this.preparePayloadArgs = preparePayloadArgs;
       this.cancelled = new AtomicBoolean(false);
       this.cancellation = new CountDownLatch(1);
-      this.blockCreationFuture = blockCreationFuture;
-    }
-
-    /**
-     * Gets the blockCreationFuture.
-     *
-     * @return the blockCreationFuture
-     */
-    public CompletableFuture<Void> getBlockCreationFuture() {
-      return blockCreationFuture;
     }
 
     /** Cancel. */

@@ -21,9 +21,9 @@ import static org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.engine.
 import static org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.RpcErrorType.UNSUPPORTED_FORK;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import org.hyperledger.besu.consensus.merge.MergeContext;
@@ -70,7 +70,6 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -295,7 +294,7 @@ public class EngineGetPayloadV1Test extends AbstractScheduledApiTest {
   }
 
   @Test
-  public void shouldWaitForNonEmptyBlockWhenOnlyEmptyBlockAvailable() {
+  public void shouldReturnEmptyBlockImmediatelyWhileBuildIsInProgress() {
     final long validTimestamp = getValidPayloadTimestamp();
     final PayloadIdentifier testPid =
         PayloadIdentifier.forPayloadParams(
@@ -311,39 +310,21 @@ public class EngineGetPayloadV1Test extends AbstractScheduledApiTest {
             .prevRandao(Bytes32.random())
             .timestamp(validTimestamp)
             .buildHeader();
-    final Block testBlock =
-        new Block(testHeader, new BlockBody(Collections.emptyList(), Collections.emptyList()));
-    final BlockWithReceipts testBlockWithReceipts =
-        new BlockWithReceipts(testBlock, Collections.emptyList());
-    final PayloadWrapper testPayload = createPayload(testPid, testBlockWithReceipts);
-
-    final Block testBlockWithWithdrawals =
+    final Block emptyBlock =
         new Block(
             testHeader,
-            new BlockBody(
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Optional.of(Collections.emptyList())));
-    final BlockWithReceipts testBlockWithReceiptsAndWithdrawals =
-        new BlockWithReceipts(testBlockWithWithdrawals, Collections.emptyList());
-    final PayloadWrapper testPayloadWithWithdrawals =
-        createPayload(testPid, testBlockWithReceiptsAndWithdrawals);
+            new BlockBody(Collections.emptyList(), Collections.emptyList(), defaultWithdrawals()));
+    final PayloadWrapper emptyPayload =
+        createPayload(testPid, new BlockWithReceipts(emptyBlock, Collections.emptyList()));
 
-    when(mergeContext.retrievePayloadById(testPid))
-        .thenReturn(Optional.of(testPayload))
-        .thenReturn(Optional.of(testPayloadWithWithdrawals));
+    when(mergeContext.retrievePayloadById(testPid)).thenReturn(Optional.of(emptyPayload));
 
     final JsonRpcResponse response = resp(getMethodName(), testPid);
 
+    assertThat(response).isInstanceOf(JsonRpcSuccessResponse.class);
+    verify(mergeContext, times(1)).retrievePayloadById(testPid);
     verify(mergeMiningCoordinator, times(1)).finalizeProposalById(testPid);
-    verify(mergeMiningCoordinator, times(1)).awaitCurrentBuildCompletion(testPid);
-    verify(mergeContext, times(2)).retrievePayloadById(testPid);
-
-    InOrder inOrder = inOrder(mergeMiningCoordinator);
-    inOrder.verify(mergeMiningCoordinator).finalizeProposalById(testPid);
-    inOrder.verify(mergeMiningCoordinator).awaitCurrentBuildCompletion(testPid);
-
-    assertThat(response).isNotInstanceOf(JsonRpcErrorResponse.class);
+    verifyNoMoreInteractions(mergeMiningCoordinator);
   }
 
   protected PayloadWrapper createDefaultPayloadWrapper() {
